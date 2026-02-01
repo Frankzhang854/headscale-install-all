@@ -9,6 +9,16 @@ DEFAULT_CONFIG_FILE="$SCRIPT_DIR/config/upgrade-config.conf"
 # 默认的数据备份目录
 DEFAULT_BACKUP_DIR="$SCRIPT_DIR/backup"
 
+# 定义需要执行权限的脚本列表
+NEEDED_EXECUTABLES=(
+    "install-headscale.sh"
+    "nginx.sh"
+    "derp.sh"
+    "install-headscaleui.sh"
+    "acme-headscale-derp-ssl.sh"
+    "uninstall-headscale.sh"
+)
+
 # 颜色定义
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -37,6 +47,31 @@ check_yq_installed() {
         log_info "或: curl -L https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -o /usr/local/bin/yq && chmod +x /usr/local/bin/yq"
         return 1
     fi
+}
+
+# 赋予脚本执行权限
+make_scripts_executable() {
+    log_info "检查并赋予所需脚本执行权限..."
+    for script in "${NEEDED_EXECUTABLES[@]}"; do
+        local full_path="$SCRIPT_DIR/$script"
+        if [[ -f "$full_path" ]]; then
+            if [[ -x "$full_path" ]]; then
+                log_info "  - $script 已具有执行权限。"
+            else
+                log_info "  - $script 权限不足，正在授予执行权限 (chmod +x)..."
+                chmod +x "$full_path"
+                if [[ $? -eq 0 ]]; then
+                    log_info "  - $script 权限设置成功。"
+                else
+                    log_error "  - 为 $script 设置执行权限失败！"
+                    return 1
+                fi
+            fi
+        else
+            log_warn "  - 脚本 $script 不存在于 $SCRIPT_DIR。"
+        fi
+    done
+    log_info "所有必需脚本的权限检查完成。"
 }
 
 # ======== 配置文件读写与验证 (仅用于升级) ========
@@ -82,54 +117,59 @@ EOF
 # 1. 安装 Headscale (交互式)
 install_headscale_interactive() {
     log_info "开始安装 Headscale (交互模式)..."
-    if [[ -f "./install-headscale.sh" ]]; then
-        ./install-headscale.sh
+    local script_path="$SCRIPT_DIR/install-headscale.sh"
+    if [[ -f "$script_path" ]]; then
+        "$script_path"
         log_info "Headscale 安装完成。"
     else
-        log_error "找不到安装脚本 install-headscale.sh"
+        log_error "找不到安装脚本 $script_path"
     fi
 }
 
 # 2. 安装 Nginx 配置 (交互式)
 install_nginx_interactive() {
     log_info "开始配置 Nginx (交互模式)..."
-    if [[ -f "./nginx.sh" ]]; then
-        ./nginx.sh
+    local script_path="$SCRIPT_DIR/nginx.sh"
+    if [[ -f "$script_path" ]]; then
+        "$script_path"
         log_info "Nginx 配置完成。"
     else
-        log_error "找不到配置脚本 nginx.sh"
+        log_error "找不到配置脚本 $script_path"
     fi
 }
 
 # 3. 安装 DERP (交互式)
 install_derp_interactive() {
     log_info "开始安装 DERP (交互模式)..."
-    if [[ -f "./derp.sh" ]]; then
-        ./derp.sh
+    local script_path="$SCRIPT_DIR/derp.sh"
+    if [[ -f "$script_path" ]]; then
+        "$script_path"
         log_info "DERP 安装完成。"
     else
-        log_error "找不到安装脚本 derp.sh"
+        log_error "找不到安装脚本 $script_path"
     fi
 }
 
 # 4. 安装 Headscale UI (交互式)
 install_headscale_ui_interactive() {
     log_info "开始安装 Headscale UI (交互模式)..."
-    if [[ -f "./install-headscaleui.sh" ]]; then
-        ./install-headscaleui.sh
+    local script_path="$SCRIPT_DIR/install-headscaleui.sh"
+    if [[ -f "$script_path" ]]; then
+        "$script_path"
         log_info "Headscale UI 安装完成。"
     else
-        log_error "找不到安装脚本 install-headscaleui.sh"
+        log_error "找不到安装脚本 $script_path"
     fi
 }
 
 # 5. 配置 ACME 证书 (交互式)
 configure_acme_interactive() {
     log_info "开始配置 ACME 证书 (交互模式)..."
-    if [[ -f "./acme-headscale-derp-ssl.sh" ]]; then
-        ./acme-headscale-derp-ssl.sh
+    local script_path="$SCRIPT_DIR/acme-headscale-derp-ssl.sh"
+    if [[ -f "$script_path" ]]; then
+        "$script_path"
     else
-        log_error "找不到配置脚本 acme-headscale-derp-ssl.sh"
+        log_error "找不到配置脚本 $script_path"
     fi
 }
 
@@ -169,25 +209,27 @@ upgrade_headscale() {
 
     # 卸载旧版
     log_info "卸载旧版 Headscale..."
-    if [[ -f "./uninstall-headscale.sh" ]]; then
-        ./uninstall-headscale.sh
+    local script_path="$SCRIPT_DIR/uninstall-headscale.sh"
+    if [[ -f "$script_path" ]]; then
+        "$script_path"
     else
-        log_error "找不到卸载脚本 uninstall-headscale.sh"
+        log_error "找不到卸载脚本 $script_path"
         return 1
     fi
 
     # 安装新版 (使用配置文件自动填充)
     log_info "安装新版 Headscale (使用配置文件)..."
 
-    if [[ -f "./install-headscale.sh" ]]; then
+    script_path="$SCRIPT_DIR/install-headscale.sh"
+    if [[ -f "$script_path" ]]; then
         # 使用 here document 提供预设答案
         {
             echo "$HEADSCALE_SERVER_URL"
             echo "$USE_REVERSE_PROXY"
-        } | ./install-headscale.sh
+        } | "$script_path"
         log_info "Headscale 新版本安装完成。"
     else
-        log_error "找不到安装脚本 install-headscale.sh"
+        log_error "找不到安装脚本 $script_path"
         return 1
     fi
 
@@ -484,11 +526,12 @@ restore_headscale() {
 # 16. 卸载 Headscale (交互式)
 uninstall_headscale_interactive() {
     log_info "开始卸载 Headscale (交互模式)..."
-    if [[ -f "./uninstall-headscale.sh" ]]; then
-        ./uninstall-headscale.sh
+    local script_path="$SCRIPT_DIR/uninstall-headscale.sh"
+    if [[ -f "$script_path" ]]; then
+        "$script_path"
         log_info "Headscale 卸载完成。"
     else
-        log_error "找不到卸载脚本 uninstall-headscale.sh"
+        log_error "找不到卸载脚本 $script_path"
     fi
 }
 
@@ -528,6 +571,13 @@ main() {
     # 初始化默认值
     export CONFIG_FILE="${CONFIG_FILE:-$DEFAULT_CONFIG_FILE}"
     export BACKUP_DIR="${BACKUP_DIR:-$DEFAULT_BACKUP_DIR}"
+
+    # 在主程序开始时检查并设置权限
+    make_scripts_executable
+    if [[ $? -ne 0 ]]; then
+        log_error "脚本权限设置失败，无法继续执行。请手动检查并设置脚本权限。"
+        exit 1
+    fi
 
     while true; do
         show_menu
