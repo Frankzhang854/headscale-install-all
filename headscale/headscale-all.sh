@@ -17,6 +17,7 @@ NEEDED_EXECUTABLES=(
     "install-headscaleui.sh"
     "acme-headscale-derp-ssl.sh"
     "uninstall-headscale.sh"
+    "qzderp_v1_0.py"
 )
 
 # 颜色定义
