@@ -1,4 +1,15 @@
 #!/bin/bash
+# 
+# 脚本版本: v4.1
+# 描述: Headscale 管理工具 (整合脚本)
+# 功能:
+# - 交互式安装/配置 Headscale, Nginx, DERP, Headscale UI。
+# - 升级/重装 Headscale 并合并配置、恢复数据。
+# - 备份和恢复 Headscale 配置与数据。
+# - 管理相关服务 (headscale, nginx, derper, tailscale)。
+# - 启动时自动为所需脚本赋予执行权限。
+# - 选项 14 (升级/重装) 和选项 16 (一键还原) 已移除自动安装UI的步骤。
+# 
 
 # ======== 全局配置 ========
 # 获取脚本所在目录
@@ -52,7 +63,7 @@ check_yq_installed() {
 
 # 赋予脚本执行权限
 make_scripts_executable() {
-    log_info "检查并赋予所需脚本执行权限..."
+    log_info "正在检查并赋予所需脚本执行权限..."
     for script in "${NEEDED_EXECUTABLES[@]}"; do
         local full_path="$SCRIPT_DIR/$script"
         if [[ -f "$full_path" ]]; then
@@ -69,7 +80,7 @@ make_scripts_executable() {
                 fi
             fi
         else
-            log_warn "  - 脚本 $script 不存在于 $SCRIPT_DIR。"
+            log_warn "  - 脚本 $script 在 $SCRIPT_DIR 中不存在。"
         fi
     done
     log_info "所有必需脚本的权限检查完成。"
@@ -174,7 +185,77 @@ configure_acme_interactive() {
     fi
 }
 
-# 6. 升级/重装 Headscale (核心功能，使用配置文件)
+# 6. 安装 Tailscale
+install_tailscale() {
+    log_info "开始安装 Tailscale..."
+    curl -fsSL https://tailscale.com/install.sh | sh
+    if command -v tailscale &> /dev/null; then
+        log_info "Tailscale 安装成功。"
+    else
+        log_error "Tailscale 安装可能失败，请检查网络连接或手动安装。"
+    fi
+}
+
+# 7. 重启 Headscale
+restart_headscale() {
+    log_info "正在重启 Headscale 服务..."
+    systemctl restart headscale
+    systemctl status headscale --no-pager -l
+}
+
+# 8. 重启 Nginx
+restart_nginx() {
+    log_info "正在重启 Nginx 服务..."
+    systemctl restart nginx
+    systemctl status nginx --no-pager -l
+}
+
+# 9. 重启 DERP (修正服务名)
+restart_derp() {
+    log_info "正在重启 DERP (derper) 服务..."
+    systemctl restart derper # 修正服务名
+    systemctl status derper --no-pager -l # 修正服务名
+}
+
+# 10. 重启 Tailscale (假设服务名为 tailscaled)
+restart_tailscale() {
+    log_info "正在重启 Tailscale 服务 (tailscaled)..."
+    systemctl restart tailscaled
+    systemctl status tailscaled --no-pager -l
+}
+
+# 11. 设置配置文件路径 (用于升级)
+set_config_file() {
+    echo "当前升级配置文件路径: $CONFIG_FILE"
+    read -p "请输入新的升级配置文件路径 (留空则使用默认: $DEFAULT_CONFIG_FILE): " new_config
+    # 如果用户直接回车，使用默认值
+    if [[ -z "$new_config" ]]; then
+        CONFIG_FILE="$DEFAULT_CONFIG_FILE"
+    else
+        CONFIG_FILE="$new_config"
+    fi
+    export CONFIG_FILE
+    log_info "升级配置文件路径已更新为: $CONFIG_FILE"
+}
+
+# 12. 设置备份目录路径
+set_backup_dir() {
+    echo "当前备份目录路径: $BACKUP_DIR"
+    read -p "请输入新的备份目录路径 (留空则使用默认: $DEFAULT_BACKUP_DIR): " new_backup_dir
+    # 如果用户直接回车，使用默认值
+    if [[ -z "$new_backup_dir" ]]; then
+        BACKUP_DIR="$DEFAULT_BACKUP_DIR"
+    else
+        BACKUP_DIR="$new_backup_dir"
+    fi
+    export BACKUP_DIR
+    log_info "备份目录路径已更新为: $BACKUP_DIR"
+}
+
+# 13. 生成新的升级配置文件模板
+# (函数保持不变，只是重新编号)
+
+# 14. 升级/重装 Headscale (核心功能，使用配置文件)
 upgrade_headscale() {
     log_info "开始升级/重装 Headscale..."
 
@@ -311,41 +392,10 @@ upgrade_headscale() {
     fi
 
     log_info "Headscale 升级/重装完成！备份已保存至 $backup_dir"
-
-    # 在所有服务启动后，自动执行安装 Headscale UI
-    log_info "正在自动执行安装 Headscale UI (对应菜单选项 4)..."
-    install_headscale_ui_interactive
+    # 自动安装UI的步骤已移除
 }
 
-# 7. 重启 Headscale
-restart_headscale() {
-    log_info "正在重启 Headscale 服务..."
-    systemctl restart headscale
-    systemctl status headscale --no-pager -l
-}
-
-# 8. 重启 Nginx
-restart_nginx() {
-    log_info "正在重启 Nginx 服务..."
-    systemctl restart nginx
-    systemctl status nginx --no-pager -l
-}
-
-# 9. 重启 DERP (修正服务名)
-restart_derp() {
-    log_info "正在重启 DERP (derper) 服务..."
-    systemctl restart derper # 修正服务名
-    systemctl status derper --no-pager -l # 修正服务名
-}
-
-# 10. 重启 Tailscale (假设服务名为 tailscaled)
-restart_tailscale() {
-    log_info "正在重启 Tailscale 服务 (tailscaled)..."
-    systemctl restart tailscaled
-    systemctl status tailscaled --no-pager -l
-}
-
-# 11. 一键备份 Headscale
+# 15. 一键备份 Headscale
 backup_headscale() {
     log_info "开始一键备份 Headscale..."
 
@@ -372,46 +422,7 @@ backup_headscale() {
     log_info "Headscale 一键备份完成！备份已保存至 $backup_dir"
 }
 
-# 12. 设置配置文件路径 (用于升级)
-set_config_file() {
-    echo "当前升级配置文件路径: $CONFIG_FILE"
-    read -p "请输入新的升级配置文件路径 (留空则使用默认: $DEFAULT_CONFIG_FILE): " new_config
-    # 如果用户直接回车，使用默认值
-    if [[ -z "$new_config" ]]; then
-        CONFIG_FILE="$DEFAULT_CONFIG_FILE"
-    else
-        CONFIG_FILE="$new_config"
-    fi
-    export CONFIG_FILE
-    log_info "升级配置文件路径已更新为: $CONFIG_FILE"
-}
-
-# 13. 设置备份目录路径
-set_backup_dir() {
-    echo "当前备份目录路径: $BACKUP_DIR"
-    read -p "请输入新的备份目录路径 (留空则使用默认: $DEFAULT_BACKUP_DIR): " new_backup_dir
-    # 如果用户直接回车，使用默认值
-    if [[ -z "$new_backup_dir" ]]; then
-        BACKUP_DIR="$DEFAULT_BACKUP_DIR"
-    else
-        BACKUP_DIR="$new_backup_dir"
-    fi
-    export BACKUP_DIR
-    log_info "备份目录路径已更新为: $BACKUP_DIR"
-}
-
-# 14. 安装 Tailscale
-install_tailscale() {
-    log_info "开始安装 Tailscale..."
-    curl -fsSL https://tailscale.com/install.sh | sh
-    if command -v tailscale &> /dev/null; then
-        log_info "Tailscale 安装成功。"
-    else
-        log_error "Tailscale 安装可能失败，请检查网络连接或手动安装。"
-    fi
-}
-
-# 15. 一键还原 Headscale
+# 16. 一键还原 Headscale
 restore_headscale() {
     log_info "开始一键还原 Headscale..."
     
@@ -518,13 +529,10 @@ restore_headscale() {
     fi
 
     log_info "Headscale 一键还原完成！"
-
-    # 在所有服务启动后，自动执行安装 Headscale UI
-    log_info "正在自动执行安装 Headscale UI (对应菜单选项 4)..."
-    install_headscale_ui_interactive
+    # 自动安装UI的步骤已移除
 }
 
-# 16. 卸载 Headscale (交互式)
+# 17. 卸载 Headscale (交互式)
 uninstall_headscale_interactive() {
     log_info "开始卸载 Headscale (交互模式)..."
     local script_path="$SCRIPT_DIR/uninstall-headscale.sh"
@@ -536,7 +544,7 @@ uninstall_headscale_interactive() {
     fi
 }
 
-# 17. 显示菜单
+# 18. 显示菜单
 show_menu() {
     clear
     echo "========================================="
@@ -544,27 +552,30 @@ show_menu() {
     echo "========================================="
     echo "当前升级配置文件: $CONFIG_FILE"
     echo "当前备份目录: $BACKUP_DIR"
+    echo "本机强制指定节点中转: python3 qzderp_persistent_map.py force ips_1 ips_2 ips_3"
+    echo "查看强制指定节点中转列表: python3 qzderp_persistent_map.py list"
+    echo "取消本机强制指定节点中转: python3 qzderp_persistent_map.py cancel ips_1 ips_2 ips_3"
     echo "-----------------------------------------"
-    echo "1. 安装/配置 Headscale (交互模式)"
-    echo "2. 配置 Nginx 反向代理 (交互模式)"
-    echo "3. 安装 DERP 中继服务 (交互模式)"
-    echo "4. 安装 Headscale UI (交互模式)"
-    echo "5. 配置 ACME SSL 证书 (交互模式)"
-    echo "6. 升级/重装 Headscale (备份 -> 卸载 -> 安装 -> 配置合并 -> 还原 -> 重启 -> 安装UI)"
+    echo "1. 安装/配置 Headscale "
+    echo "2. 配置 Nginx 反向代理 "
+    echo "3. 安装 DERP 中继服务 "
+    echo "4. 安装 Headscale UI "
+    echo "5. 配置 ACME SSL 证书 "
+    echo "6. 安装 Tailscale"
     echo "7. 重启 Headscale 服务"
     echo "8. 重启 Nginx 服务"
     echo "9. 重启 DERP 服务"
-    echo "A. 重启 Tailscale 服务"
-    echo "B. 一键备份 Headscale (备份关键文件夹、目录和 config.yaml)"
-    echo "C. 设置/切换升级配置文件路径"
-    echo "D. 设置/切换备份目录路径"
-    echo "E. 生成新的升级配置文件模板"
-    echo "F. 安装 Tailscale"
-    echo "G. 一键还原 Headscale (从指定备份目录智能合并 config.yaml -> 还原其他 -> 重启服务 -> 安装UI)"
-    echo "H. 卸载 Headscale (交互模式)"
+    echo "10. 重启 Tailscale 服务"
+    echo "11. 设置/切换升级配置文件路径"
+    echo "12. 设置/切换备份目录路径"
+    echo "13. 生成新的升级配置文件模板"
+    echo "14. 升级/重装 Headscale (备份 -> 卸载 -> 安装 -> 配置合并 -> 还原 -> 重启服务)"
+    echo "15. 一键备份 Headscale (备份关键文件夹、目录和 config.yaml)"
+    echo "16. 一键还原 Headscale (从指定备份目录智能合并 config.yaml -> 还原 -> 重启服务)"
+    echo "17. 卸载 Headscale "
     echo "0. 退出"
     echo "========================================="
-    read -p "请选择操作 [0-H]: " choice
+    read -p "请选择操作 [0-17]: " choice
 }
 
 # ======== 主程序入口 ========
@@ -588,18 +599,18 @@ main() {
             3) install_derp_interactive ;;
             4) install_headscale_ui_interactive ;;
             5) configure_acme_interactive ;;
-            6) upgrade_headscale ;;
+            6) install_tailscale ;;
             7) restart_headscale ;;
             8) restart_nginx ;;
             9) restart_derp ;;
-            A|a) restart_tailscale ;; # 支持大小写
-            B|b) backup_headscale ;;
-            C|c) set_config_file ;;
-            D|d) set_backup_dir ;;
-            E|e) generate_new_config "$CONFIG_FILE" ;;
-            F|f) install_tailscale ;; # 添加新功能
-            G|g) restore_headscale ;; # 添加新功能
-            H|h) uninstall_headscale_interactive ;; # 添加新功能
+            10) restart_tailscale ;;
+            11) set_config_file ;;
+            12) set_backup_dir ;;
+            13) generate_new_config "$CONFIG_FILE" ;;
+            14) upgrade_headscale ;; # 移动到这里，已移除自动安装UI步骤
+            15) backup_headscale ;; # 移动到这里
+            16) restore_headscale ;; # 移动到这里，已移除自动安装UI步骤
+            17) uninstall_headscale_interactive ;;
             0) log_info "退出管理工具。"; exit 0 ;;
             *) log_error "无效选项，请重新选择。" ;;
         esac
