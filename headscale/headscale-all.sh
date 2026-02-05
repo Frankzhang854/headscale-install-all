@@ -1,6 +1,6 @@
 #!/bin/bash
 # 
-# 脚本版本: v4.1
+# 脚本版本: v4.2
 # 描述: Headscale 管理工具 (整合脚本)
 # 功能:
 # - 交互式安装/配置 Headscale, Nginx, DERP, Headscale UI。
