@@ -6,14 +6,7 @@ set -e  # 遇到错误立即退出
 URL="https://github.com/gurucomputing/headscale-ui/releases/download/2025.08.23/headscale-ui.zip"
 WEB_DIR="/var/www"
 ZIP_FILE="/tmp/headscale-ui.zip"
-API_KEY_FILE="/etc/headscale/API-KEY.txt"  # 更安全的存储位置
 MAX_WAIT=30
-
-# 确保 /etc/headscale 目录存在
-if [ ! -d "/etc/headscale" ]; then
-    echo "❌ /etc/headscale 目录不存在，请确认 headscale 已正确安装并配置。"
-    exit 1
-fi
 
 # 检测并安装 unzip
 echo "正在检查 unzip 是否已安装..."
@@ -48,7 +41,7 @@ if ! command -v curl &> /dev/null; then
         echo "❌ 无法安装 curl，请手动安装后重试。"
         exit 1
     fi
-    echo "✅ curl 已成功安装。"
+    echo "✅ curl 已成功安装."
 else
     echo "✅ curl 已安装。"
 fi
@@ -92,18 +85,4 @@ else
     echo "✅ headscale 命令正常。"
 fi
 
-# 创建长期 API Key
-echo "正在创建 API Key（有效期 9999 天）..."
-API_KEY_OUTPUT=$(headscale apikeys create --expiration 9999d)
-
-# 打印到终端
-echo "🔑 生成的 API Key 信息如下："
-echo "$API_KEY_OUTPUT"
-
-# 保存到安全位置
-echo "$API_KEY_OUTPUT" > "$API_KEY_FILE"
-chmod 600 "$API_KEY_FILE"
-chown root:root "$API_KEY_FILE"
-
-echo "✅ API Key 已安全保存至 $API_KEY_FILE"
-echo "✅ 部署与配置已完成！"
+echo "✅ headscale-ui 部署完成，服务已重启！"
